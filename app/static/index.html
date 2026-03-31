@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Location Sharing Web App</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    .row { margin: 10px 0; }
+    input { padding: 6px; }
+    button { padding: 8px 10px; margin-right: 8px; }
+    #log { background: #111; color: #eee; padding: 10px; height: 300px; overflow: auto; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>Secure Real-time Location Sharing</h2>
+
+  <div class="row">
+    <label>WebSocket URL: <input id="wsUrl" size="40" /></label>
+  </div>
+  <div class="row">
+    <label>Username: <input id="username" /></label>
+    <label>Password: <input id="password" type="password" /></label>
+    <button id="connectBtn">Connect</button>
+    <button id="disconnectBtn">Disconnect</button>
+  </div>
+
+  <div class="row">
+    <label>Subscribe users (comma separated): <input id="subs" size="40" placeholder="alice,bob" /></label>
+    <button id="subBtn">Subscribe</button>
+  </div>
+
+  <div class="row">
+    <label>Manual lat: <input id="lat" /></label>
+    <label>Manual lon: <input id="lon" /></label>
+    <label>Accuracy: <input id="acc" value="5" /></label>
+    <button id="sendManualBtn">Send Manual Location</button>
+  </div>
+
+  <div class="row">
+    <button id="startLiveBtn">Start Live GPS</button>
+    <button id="stopLiveBtn">Stop Live GPS</button>
+  </div>
+
+  <h3>Events</h3>
+  <div id="log"></div>
+
+  <script>
+    const logBox = document.getElementById('log');
+    const wsUrlInput = document.getElementById('wsUrl');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const subsInput = document.getElementById('subs');
+    const latInput = document.getElementById('lat');
+    const lonInput = document.getElementById('lon');
+    const accInput = document.getElementById('acc');
+
+    let ws = null;
+    let watchId = null;
+    let seq = 0;
+
+    const defaultWs = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+    wsUrlInput.value = defaultWs;
+
+    function log(msg) {
+      const line = `[${new Date().toISOString()}] ${msg}`;
+      logBox.textContent += line + '\n';
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function send(obj) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log('WebSocket not connected');
+        return;
+      }
+      ws.send(JSON.stringify(obj));
+    }
+
+    document.getElementById('connectBtn').onclick = () => {
+      ws = new WebSocket(wsUrlInput.value.trim());
+      ws.onopen = () => {
+        log('connected');
+        send({ type: 'auth', username: usernameInput.value.trim(), password: passwordInput.value });
+      };
+      ws.onmessage = (evt) => log(`recv: ${evt.data}`);
+      ws.onclose = (evt) => log(`closed code=${evt.code} reason=${evt.reason || ''}`);
+      ws.onerror = () => log('socket error');
+    };
+
+    document.getElementById('disconnectBtn').onclick = () => {
+      if (ws) ws.close(1000, 'web_app_disconnect');
+    };
+
+    document.getElementById('subBtn').onclick = () => {
+      const users = subsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+      send({ type: 'subscribe', users });
+    };
+
+    document.getElementById('sendManualBtn').onclick = () => {
+      const lat = Number(latInput.value);
+      const lon = Number(lonInput.value);
+      const accuracy = Number(accInput.value);
+      seq += 1;
+      send({ type: 'location_update', lat, lon, accuracy, seq, client_ts: new Date().toISOString() });
+    };
+
+    document.getElementById('startLiveBtn').onclick = () => {
+      if (!navigator.geolocation) {
+        log('Geolocation not supported');
+        return;
+      }
+      if (watchId !== null) {
+        log('Live GPS already running');
+        return;
+      }
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          seq += 1;
+          send({
+            type: 'location_update',
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            seq,
+            client_ts: new Date().toISOString()
+          });
+        },
+        (err) => log(`GPS error: ${err.message}`),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+      log('Live GPS started');
+    };
+
+    document.getElementById('stopLiveBtn').onclick = () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        log('Live GPS stopped');
+      }
+    };
+  </script>
+</body>
+</html>
