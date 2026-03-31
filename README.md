@@ -163,21 +163,6 @@ The client prompts for password and live coordinate input interactively.
 
 ---
 
-### 4) Use the web application
-
-After starting the server, open your browser:
-
-- `http://127.0.0.1:8765/`
-
-The server now serves a built-in single-page web UI that:
-- authenticates a user
-- subscribes to other users
-- sends manual location updates
-- streams live GPS updates via browser geolocation
-- displays inbound broadcasts in real time
-
----
-
 ## Experimental socket option evaluation
 
 Run comparative benchmark across option sets:

@@ -6,8 +6,6 @@ import json
 import logging
 import ssl
 from datetime import datetime, timezone
-from http import HTTPStatus
-from pathlib import Path
 
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol, serve
@@ -43,7 +41,6 @@ class LocationServer:
         self.cfg = cfg
         self.db = Database(cfg.db_file)
         self.manager = ConnectionManager()
-        self.static_dir = Path(__file__).resolve().parent / "static"
 
     async def run(self) -> None:
         self.db.init_schema()
@@ -69,26 +66,14 @@ class LocationServer:
             ping_interval=self.cfg.ping_interval,
             ping_timeout=self.cfg.ping_timeout,
             max_size=self.cfg.max_message_size,
-            process_request=self.process_http_request,
         ):
             logging.info("Server started on %s:%s", self.cfg.host, self.cfg.port)
             await asyncio.Future()
 
-    async def process_http_request(self, path: str, _headers: object):
-        if path not in {"/", "/index.html"}:
-            return None
-        content = (self.static_dir / "index.html").read_bytes()
-        headers = [
-            ("Content-Type", "text/html; charset=utf-8"),
-            ("Content-Length", str(len(content))),
-            ("Cache-Control", "no-store"),
-        ]
-        return HTTPStatus.OK, headers, content
-
     async def handle_connection(self, ws: WebSocketServerProtocol) -> None:
         remote = getattr(ws, "remote_address", None)
         remote_addr = f"{remote[0]}:{remote[1]}" if remote else "unknown"
-        await self.manager.register(ws)
+        state = await self.manager.register(ws)
         logging.info("connection_open remote=%s", remote_addr)
 
         try:
